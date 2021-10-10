@@ -1,7 +1,7 @@
-from time import sleep
-
 import numpy as np
 import cv2 as cv
+import time
+import random
 
 def img_resize(image, width = None, height = None, inter = cv.INTER_AREA):
     # initialize the dimensions of the image to be resized and
@@ -77,7 +77,12 @@ def main():
         exit()
 
     gem = cv.imread('Diamond.png', cv.IMREAD_UNCHANGED)
-    gem = img_resize(gem, height = 64)
+    gem = img_resize(gem, height=64)
+    gem_h, gem_w = gem.shape[0], gem.shape[1]
+
+    bomb = cv.imread('Bomb.png', cv.IMREAD_UNCHANGED)
+    bomb = img_resize(bomb, height=64)
+    bomb_h, bomb_w = bomb.shape[0], bomb.shape[1]
 
     ret, new_frame = cap.read()
     # if frame is read correctly ret is True
@@ -85,8 +90,16 @@ def main():
         print("Can't receive frame (stream end?). Exiting ...")
         exit(0)
 
+    score = 0
+    delay = 2.5
+    time_on_screen = 3
+
     old_frame = np.zeros(new_frame.shape, dtype=np.uint8)
     dest_frame = np.zeros(new_frame.shape, dtype=np.uint8)
+
+    current_objects = list()
+
+    start_time = time.time()
     while True:
         # Capture frame-by-frame
         ret, new_frame = cap.read()
@@ -97,19 +110,57 @@ def main():
 
         # Our operations on the frame come here
         cv.subtract(new_frame, old_frame, dest_frame)
-        ret, thresh1 = cv.threshold(dest_frame, 100, 255, cv.THRESH_BINARY)
+        ret, thresh1 = cv.threshold(dest_frame, 200, 255, cv.THRESH_BINARY)
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")
             break
 
-        final_frame = overlay_transparent(new_frame, gem, 100, 100)
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= delay:
+            start_time = time.time()
+            if random.randint(1, 3) == 1:
+                x = random.randint(20, new_frame.shape[0]-bomb_w-20)
+                y = random.randint(20, new_frame.shape[1]/2-bomb_h-20)
+                current_objects.append(["bomb", x, y, time_on_screen])
+            else:
+                x = random.randint(20, new_frame.shape[0]-gem_w-20)
+                y = random.randint(20, new_frame.shape[1]/2-gem_h-20)
+                current_objects.append(["gem", x, y, time_on_screen])
+
+        for data in current_objects:
+            x = data[1]
+            y = data[2]
+            if elapsed_time >= 1:
+                data[3] -= 1
+
+            if data[0] == "bomb":
+                if np.any(thresh1[y:y + bomb_h, x:x + bomb_w]):
+                    if score > 0:
+                        score -= 1
+                    print("OPS, BOMB TAKEN! Current score: ", score)
+                    current_objects.remove(data)
+                elif data[3] == 0:
+                    current_objects.remove(data)
+                else:
+                    new_frame = overlay_transparent(new_frame, bomb, x, y)
+            else:
+                if np.any(thresh1[y:y + gem_h, x:x + gem_w]):
+                    score += 1
+                    current_objects.remove(data)
+                    print("GEM TAKEN! Current score: ", score)
+                elif data[3] == 0:
+                    current_objects.remove(data)
+                else:
+                    new_frame = overlay_transparent(new_frame, gem, x, y)
 
         # Display the resulting frame
-        flipHorizontal = cv.flip(final_frame, 1)
-        cv.imshow('frame', flipHorizontal)
+        flip_horizontal = cv.flip(new_frame, 1)
+        flip_horizontal_motion = cv.flip(dest_frame, 1)
+        cv.imshow('frame', flip_horizontal)
+        cv.imshow('motion', flip_horizontal_motion)
         old_frame = new_frame
 
-        if cv.waitKey(1) == ord('q'):
+        if cv.waitKey(40) == ord('q'):
             break
     # When everything done, release the capture
     cap.release()
