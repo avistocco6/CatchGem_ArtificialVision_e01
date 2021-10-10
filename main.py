@@ -35,31 +35,40 @@ def img_resize(image, width = None, height = None, inter = cv.INTER_AREA):
     return resized
 
 
-def insert_img(background, img, x_offset, y_offset):
-    """Inserts a small image in a background at a random position"""
-    x_end = x_offset + img.shape[1]
-    y_end = y_offset + img.shape[0]
-    background[y_offset:y_end, x_offset:x_end] = img
+def overlay_transparent(background, overlay, x, y):
+
+    background_width = background.shape[1]
+    background_height = background.shape[0]
+
+    if x >= background_width or y >= background_height:
+        return background
+
+    h, w = overlay.shape[0], overlay.shape[1]
+
+    if x + w > background_width:
+        w = background_width - x
+        overlay = overlay[:, :w]
+
+    if y + h > background_height:
+        h = background_height - y
+        overlay = overlay[:h]
+
+    if overlay.shape[2] < 4:
+        overlay = np.concatenate(
+            [
+                overlay,
+                np.ones((overlay.shape[0], overlay.shape[1], 1), dtype = overlay.dtype) * 255
+            ],
+            axis = 2,
+        )
+
+    overlay_image = overlay[..., :3]
+    mask = overlay[..., 3:] / 255.0
+
+    background[y:y+h, x:x+w] = (1.0 - mask) * background[y:y+h, x:x+w] + mask * overlay_image
 
     return background
 
-def bland_img(background, img, x_offset, y_offset):
-    rows, columns, channels = img.shape
-    roi = background[x_offset:(x_offset+rows), y_offset:(y_offset+columns)]
-
-    img_gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
-    ret, mask = cv.threshold(img_gray, 120, 255, cv.THRESH_BINARY)
-
-    bg = cv.bitwise_or(roi, roi, mask=mask)
-    mask_inv = cv.bitwise_not(img_gray)
-    fg = cv.bitwise_and(img, img, mask=mask_inv)
-
-    final_roi = cv.add(bg, fg)
-    cv.imshow("fg", final_roi)
-    img = final_roi
-    background[y_offset : y_offset + img.shape[0], x_offset : x_offset + img.shape[1]]= img
-
-    return background
 
 def main():
     cap = cv.VideoCapture(0)
@@ -68,11 +77,7 @@ def main():
         exit()
 
     gem = cv.imread('Diamond.png', cv.IMREAD_UNCHANGED)
-    # gem = cv.resize(gem,(64,64))
     gem = img_resize(gem, height = 64)
-    if len(gem.shape) > 2 and gem.shape[2] == 4:
-        # convert the image from RGBA2RGB
-        gem = cv.cvtColor(gem, cv.COLOR_BGRA2BGR)
 
     old_frame = np.zeros((480,640,3), dtype=np.uint8)
     dest_frame = np.zeros((480,640,3), dtype=np.uint8)
@@ -91,8 +96,7 @@ def main():
             print("Can't receive frame (stream end?). Exiting ...")
             break
 
-        # final_frame = insert_img(new_frame, gem)
-        final_frame = insert_img(new_frame, gem, 100, 100)
+        final_frame = overlay_transparent(new_frame, gem, 100, 100)
 
         # Display the resulting frame
         flipHorizontal = cv.flip(final_frame, 1)
