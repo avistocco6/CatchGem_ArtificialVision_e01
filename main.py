@@ -79,8 +79,14 @@ def main():
     gem = cv.imread('Diamond.png', cv.IMREAD_UNCHANGED)
     gem = img_resize(gem, height = 64)
 
-    old_frame = np.zeros((480,640,3), dtype=np.uint8)
-    dest_frame = np.zeros((480,640,3), dtype=np.uint8)
+    ret, new_frame = cap.read()
+    # if frame is read correctly ret is True
+    if not ret:
+        print("Can't receive frame (stream end?). Exiting ...")
+        exit(0)
+
+    old_frame = np.zeros(new_frame.shape, dtype=np.uint8)
+    dest_frame = np.zeros(new_frame.shape, dtype=np.uint8)
     while True:
         # Capture frame-by-frame
         ret, new_frame = cap.read()
